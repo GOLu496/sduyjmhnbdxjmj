@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Personal Video Call</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        /* [Previous CSS styles for Dark Theme, Videos, and Controls go here] */
+        /* You must include the full CSS from the previous safe code */
+        :root {
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --primary: #00897B; /* Teal/Green for Personal */
+            --danger: #f44336;
+            --text: #ffffff;
+        }
+        body { background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, sans-serif; margin: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+        #app-screen { height: 100%; flex-direction: column; display: flex; }
+        .video-container { flex: 1; position: relative; background: #000; display: flex; justify-content: center; align-items: center; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        #local-video { position: absolute; bottom: 100px; right: 20px; width: 100px; height: 140px; background: #222; border: 2px solid rgba(255,255,255,0.3); border-radius: 10px; transform: scaleX(-1); box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .controls { background: #111; padding: 15px; display: flex; justify-content: space-around; }
+        .btn { padding: 12px 25px; border-radius: 30px; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 16px; }
+        .btn-call { background: var(--primary); color: white; }
+        .btn-end { background: var(--danger); color: white; }
+        .call-info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; font-size: 14px; }
+        
+        /* INCOMING CALL SCREEN */
+        #incoming-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 100;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+        }
+        .ringing-icon { color: var(--primary); font-size: 80px; animation: ring 1.5s ease-in-out infinite; }
+        @keyframes ring { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }
+        .call-actions { display: flex; gap: 40px; margin-top: 50px; }
+        .action-btn { width: 70px; height: 70px; border-radius: 50%; border: none; display: flex; justify-content: center; align-items: center; cursor: pointer; font-size: 30px; color: white; }
+        .btn-accept { background: var(--primary); }
+        .btn-decline { background: var(--danger); }
+
+    </style>
+</head>
+<body>
+
+    <div id="app-screen">
+        <div class="call-info">My ID: <span id="my-peer-id">Loading...</span></div>
+        <div class="video-container">
+            <video id="remote-video" autoplay playsinline></video>
+            <video id="local-video" autoplay muted playsinline></video>
+            
+            <div id="status-display" style="position: absolute; color: #ddd; text-align: center;">
+                Enter Friend's ID and Call.
+            </div>
+        </div>
+
+        <div class="controls">
+            <input type="number" id="partner-id" placeholder="Friend's ID" style="flex:1; padding: 10px; border-radius: 5px; border: none; font-size: 16px; background: #333; color: white;">
+            <button class="btn btn-call" id="call-btn" onclick="startCall()">
+                <i class="material-icons">call</i> CALL
+            </button>
+            <button class="btn btn-end" id="end-btn" style="display: none;" onclick="endCall()">
+                <i class="material-icons">call_end</i> END
+            </button>
+        </div>
+    </div>
+
+    <div id="incoming-screen">
+        <div class="ringing-icon"><i class="material-icons">ring_volume</i></div>
+        <h2 id="caller-name" style="margin-top: 10px;">Incoming Call from ID: ...</h2>
+        <div class="call-actions">
+            <button class="action-btn btn-decline" onclick="rejectCall()"><i class="material-icons">call_end</i></button>
+            <button class="action-btn btn-accept" onclick="acceptCall()"><i class="material-icons">videocam</i></button>
+        </div>
+    </div>
+
+
+    <script>
+        // --- CONFIGURATION ---
+        const peerConfig = {
+            config: { iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ] }
+        };
+        const VIDEO_CONSTRAINTS = { 
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20 } }, 
+            audio: true 
+        };
+        
+        let myID = null;
+        let peer = null;
+        let localStream = null;
+        let currentCall = null;
+        let isReceivingCall = false;
+
+        // 1. GET ID FROM KODULAR URL
+        function getMyIdFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            let id = urlParams.get('id');
+            if (id) {
+                return id.toString();
+            }
+            // Fallback for testing: Generate random 4-digit ID
+            return Math.floor(1000 + Math.random() * 9000).toString();
+        }
+
+        // --- INITIALIZATION ---
+        
+        function initApp() {
+            myID = getMyIdFromUrl();
+            document.getElementById('my-peer-id').innerText = myID;
+            
+            // Start Camera early
+            navigator.mediaDevices.getUserMedia(VIDEO_CONSTRAINTS)
+            .then(stream => {
+                localStream = stream;
+                document.getElementById('local-video').srcObject = stream;
+                initPeer();
+            })
+            .catch(err => {
+                alert("Camera permission denied. Cannot start app.");
+            });
+        }
+
+        function initPeer() {
+            peer = new Peer(myID, peerConfig);
+
+            peer.on('open', (id) => {
+                console.log('Peer ID is set:', id);
+            });
+
+            peer.on('error', (err) => {
+                console.error("Peer Error:", err.type);
+                document.getElementById('status-display').innerText = "ERROR: ID unavailable or Network issue.";
+            });
+
+            // 2. INCOMING CALL HANDLING
+            peer.on('call', (call) => {
+                if(currentCall || isReceivingCall) {
+                    // Reject subsequent calls if already busy
+                    call.close();
+                    return;
+                }
+                
+                isReceivingCall = true;
+                currentCall = call;
+                
+                document.getElementById('caller-name').innerText = "Incoming Call from ID: " + call.peer;
+                document.getElementById('incoming-screen').style.display = 'flex';
+                
+                // --- KODULAR INTERACTION (Ringing) ---
+                // Tell Kodular to play the ringtone/vibration
+                // IMPORTANT: This function must exist in Kodular's WebViewer.GotText
+                window.location.href = "kodular:INCOMING_CALL:" + call.peer; 
+            });
+        }
+        
+        // --- CALL FUNCTIONS ---
+
+        function startCall() {
+            const partnerID = document.getElementById('partner-id').value.trim();
+            if(!partnerID || partnerID === myID) {
+                alert("Enter a valid Partner ID.");
+                return;
+            }
+
+            document.getElementById('status-display').innerText = "Connecting...";
+            
+            const call = peer.call(partnerID, localStream);
+            currentCall = call;
+            
+            // UI Change
+            document.getElementById('call-btn').style.display = 'none';
+            document.getElementById('end-btn').style.display = 'flex';
+
+            handleCall(call);
+        }
+
+        function acceptCall() {
+            document.getElementById('incoming-screen').style.display = 'none';
+            document.getElementById('status-display').style.display = 'none';
+            isReceivingCall = false;
+
+            currentCall.answer(localStream);
+            
+            // UI Change
+            document.getElementById('call-btn').style.display = 'none';
+            document.getElementById('end-btn').style.display = 'flex';
+
+            handleCall(currentCall);
+        }
+
+        function rejectCall() {
+            if(currentCall) currentCall.close();
+            currentCall = null;
+            isReceivingCall = false;
+            document.getElementById('incoming-screen').style.display = 'none';
+            document.getElementById('status-display').innerText = "Call ended.";
+        }
+
+        function handleCall(call) {
+            call.on('stream', (remoteStream) => {
+                document.getElementById('remote-video').srcObject = remoteStream;
+                document.getElementById('status-display').style.display = 'none';
+            });
+
+            call.on('close', endCall);
+            call.on('error', (err) => {
+                console.error("Call Error:", err);
+                alert("Call failed: Peer offline or network error.");
+                endCall();
+            });
+        }
+
+        function endCall() {
+            if(currentCall) currentCall.close();
+            currentCall = null;
+            isReceivingCall = false;
+            
+            // Stop media tracks only if exiting the app fully, otherwise just reset call state
+            // localStream.getTracks().forEach(track => track.stop()); // Don't stop camera, keep preview running
+            
+            document.getElementById('remote-video').srcObject = null;
+            document.getElementById('status-display').style.display = 'block';
+            document.getElementById('status-display').innerText = "Call ended. Ready to dial.";
+            
+            document.getElementById('call-btn').style.display = 'flex';
+            document.getElementById('end-btn').style.display = 'none';
+        }
+        
+        // Start the application setup
+        initApp();
+    </script>
+</body>
+</html>
