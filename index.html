@@ -2,167 +2,296 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Personal Video Call</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>WhatsApp Style Call</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
-        /* [Previous CSS styles for Dark Theme, Videos, and Controls go here] */
-        /* You must include the full CSS from the previous safe code */
         :root {
-            --bg: #121212;
-            --surface: #1e1e1e;
-            --primary: #00897B; /* Teal/Green for Personal */
-            --danger: #f44336;
-            --text: #ffffff;
+            --bg-color: #111b21;
+            --header-color: #202c33;
+            --item-color: #111b21;
+            --accent-color: #00a884;
+            --text-primary: #e9edef;
+            --text-secondary: #8696a0;
+            --incoming-bg: #202c33;
         }
-        body { background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, sans-serif; margin: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
-        #app-screen { height: 100%; flex-direction: column; display: flex; }
-        .video-container { flex: 1; position: relative; background: #000; display: flex; justify-content: center; align-items: center; }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: Helvetica, Arial, sans-serif;
+            margin: 0; height: 100vh; display: flex; flex-direction: column;
+            user-select: none;
+        }
+
+        /* --- HEADER --- */
+        .header {
+            background-color: var(--header-color);
+            padding: 15px 15px;
+            display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+        .app-name { font-size: 20px; font-weight: bold; color: var(--text-secondary); }
+        .my-id-display { font-size: 16px; color: var(--accent-color); font-weight: bold; }
+
+        /* --- RECENT CALLS LIST --- */
+        #recent-list {
+            flex: 1; overflow-y: auto;
+        }
+        .call-item {
+            display: flex; align-items: center;
+            padding: 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #202c33;
+        }
+        .call-item:active { background-color: #202c33; }
+        .avatar {
+            width: 50px; height: 50px; background-color: #6b7c85;
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            margin-right: 15px;
+        }
+        .info { flex: 1; }
+        .name { font-size: 17px; font-weight: 500; margin-bottom: 4px; }
+        .time { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 5px; }
+        .call-icon { color: var(--accent-color); font-size: 24px; }
+
+        /* --- FAB (BOTTOM BUTTON) --- */
+        .fab {
+            position: fixed; bottom: 20px; right: 20px;
+            width: 60px; height: 60px;
+            background-color: var(--accent-color);
+            border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            cursor: pointer; z-index: 20;
+        }
+        .fab i { color: white; font-size: 28px; }
+
+        /* --- MODAL (DIALER) --- */
+        #dial-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 100;
+            display: none; justify-content: center; align-items: center;
+        }
+        .modal-box {
+            background: var(--header-color); padding: 25px;
+            width: 80%; border-radius: 15px; text-align: center;
+        }
+        input {
+            width: 100%; padding: 12px; background: #2a3942; border: none;
+            color: white; border-radius: 8px; margin: 20px 0; font-size: 18px; text-align: center;
+            box-sizing: border-box;
+        }
+        .modal-btn {
+            padding: 10px 25px; border: none; border-radius: 5px;
+            font-weight: bold; cursor: pointer; font-size: 16px; margin: 5px;
+        }
+        .btn-call { background: var(--accent-color); color: white; }
+        .btn-cancel { background: transparent; color: var(--text-secondary); }
+
+        /* --- VIDEO SCREEN --- */
+        #video-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: black; z-index: 200; display: none;
+        }
         video { width: 100%; height: 100%; object-fit: cover; }
-        #local-video { position: absolute; bottom: 100px; right: 20px; width: 100px; height: 140px; background: #222; border: 2px solid rgba(255,255,255,0.3); border-radius: 10px; transform: scaleX(-1); box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
-        .controls { background: #111; padding: 15px; display: flex; justify-content: space-around; }
-        .btn { padding: 12px 25px; border-radius: 30px; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 16px; }
-        .btn-call { background: var(--primary); color: white; }
-        .btn-end { background: var(--danger); color: white; }
-        .call-info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; font-size: 14px; }
-        
-        /* INCOMING CALL SCREEN */
+        #local-video {
+            position: absolute; bottom: 120px; right: 20px;
+            width: 100px; height: 150px; background: #333;
+            border-radius: 10px; border: 2px solid white; transform: scaleX(-1);
+        }
+        .controls {
+            position: absolute; bottom: 30px; width: 100%;
+            display: flex; justify-content: center; gap: 30px;
+        }
+        .ctrl-btn {
+            width: 60px; height: 60px; border-radius: 50%; border: none;
+            font-size: 28px; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; color: white;
+        }
+        .btn-end { background: #f44336; }
+        .btn-mute { background: rgba(255,255,255,0.2); }
+
+        /* --- INCOMING CALL --- */
         #incoming-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 100;
+            background: rgba(11, 20, 26, 0.95); z-index: 200;
             display: none; flex-direction: column; justify-content: center; align-items: center;
         }
-        .ringing-icon { color: var(--primary); font-size: 80px; animation: ring 1.5s ease-in-out infinite; }
-        @keyframes ring { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }
-        .call-actions { display: flex; gap: 40px; margin-top: 50px; }
-        .action-btn { width: 70px; height: 70px; border-radius: 50%; border: none; display: flex; justify-content: center; align-items: center; cursor: pointer; font-size: 30px; color: white; }
-        .btn-accept { background: var(--primary); }
-        .btn-decline { background: var(--danger); }
-
+        .avatar-large {
+            width: 100px; height: 100px; background: var(--accent-color);
+            border-radius: 50%; margin-bottom: 20px;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 40px; color: white;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+        .action-row { display: flex; gap: 50px; margin-top: 50px; }
+        
     </style>
 </head>
 <body>
 
-    <div id="app-screen">
-        <div class="call-info">My ID: <span id="my-peer-id">Loading...</span></div>
-        <div class="video-container">
-            <video id="remote-video" autoplay playsinline></video>
-            <video id="local-video" autoplay muted playsinline></video>
-            
-            <div id="status-display" style="position: absolute; color: #ddd; text-align: center;">
-                Enter Friend's ID and Call.
-            </div>
-        </div>
+    <div class="header">
+        <div class="app-name">Calls</div>
+        <div class="my-id-display" id="display-my-id">...</div>
+    </div>
 
-        <div class="controls">
-            <input type="number" id="partner-id" placeholder="Friend's ID" style="flex:1; padding: 10px; border-radius: 5px; border: none; font-size: 16px; background: #333; color: white;">
-            <button class="btn btn-call" id="call-btn" onclick="startCall()">
-                <i class="material-icons">call</i> CALL
-            </button>
-            <button class="btn btn-end" id="end-btn" style="display: none;" onclick="endCall()">
-                <i class="material-icons">call_end</i> END
-            </button>
+    <div id="recent-list">
+        <div style="text-align: center; padding: 50px; color: #8696a0;">
+            Tap the + button to start a call.
+        </div>
+    </div>
+
+    <div class="fab" onclick="openDialer()">
+        <i class="material-icons">add_call</i>
+    </div>
+
+    <div id="dial-modal">
+        <div class="modal-box">
+            <h3>New Video Call</h3>
+            <input type="number" id="input-partner-id" placeholder="Enter Mobile Number">
+            <div>
+                <button class="modal-btn btn-cancel" onclick="closeDialer()">Cancel</button>
+                <button class="modal-btn btn-call" onclick="dialFromInput()">Call</button>
+            </div>
         </div>
     </div>
 
     <div id="incoming-screen">
-        <div class="ringing-icon"><i class="material-icons">ring_volume</i></div>
-        <h2 id="caller-name" style="margin-top: 10px;">Incoming Call from ID: ...</h2>
-        <div class="call-actions">
-            <button class="action-btn btn-decline" onclick="rejectCall()"><i class="material-icons">call_end</i></button>
-            <button class="action-btn btn-accept" onclick="acceptCall()"><i class="material-icons">videocam</i></button>
+        <div class="avatar-large"><i class="material-icons">person</i></div>
+        <h2 id="caller-id-disp">Unknown</h2>
+        <p style="color: #8696a0;">WhatsApp Video Call</p>
+        <div class="action-row">
+            <button class="ctrl-btn btn-end" onclick="rejectCall()"><i class="material-icons">call_end</i></button>
+            <button class="ctrl-btn" style="background: #00a884;" onclick="acceptCall()"><i class="material-icons">videocam</i></button>
         </div>
     </div>
 
+    <div id="video-screen">
+        <video id="remote-video" autoplay playsinline></video>
+        <video id="local-video" autoplay muted playsinline></video>
+        <div class="controls">
+            <button class="ctrl-btn btn-end" onclick="endCall()"><i class="material-icons">call_end</i></button>
+        </div>
+    </div>
 
     <script>
-        // --- CONFIGURATION ---
-        const peerConfig = {
-            config: { iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ] }
-        };
-        const VIDEO_CONSTRAINTS = { 
-            video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20 } }, 
-            audio: true 
-        };
+        // --- 1. SETUP & ID LOGIC ---
         
-        let myID = null;
-        let peer = null;
-        let localStream = null;
-        let currentCall = null;
-        let isReceivingCall = false;
+        // URL से ID निकालें (जो Kodular भेजेगा)
+        const urlParams = new URLSearchParams(window.location.search);
+        // अगर Kodular ID नहीं भेजता तो 'Guest' लिखें
+        const myID = urlParams.get('id') || 'Guest'; 
+        
+        // Header में ID दिखाएँ
+        document.getElementById('display-my-id').innerText = myID;
 
-        // 1. GET ID FROM KODULAR URL
-        function getMyIdFromUrl() {
-            const urlParams = new URLSearchParams(window.location.search);
-            let id = urlParams.get('id');
-            if (id) {
-                return id.toString();
-            }
-            // Fallback for testing: Generate random 4-digit ID
-            return Math.floor(1000 + Math.random() * 9000).toString();
+        // PeerJS Config (Google STUN for better connection)
+        const peer = new Peer(myID, {
+            config: { iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ] }
+        });
+
+        let currentCall = null;
+        let localStream = null;
+        
+        // LocalStorage से हिस्ट्री लोड करें
+        let callHistory = JSON.parse(localStorage.getItem('wa_call_history')) || [];
+
+        // --- 2. PEERJS EVENTS ---
+
+        peer.on('open', (id) => {
+            console.log("My ID: " + id);
+            renderHistory(); // ऐप खुलते ही पुरानी लिस्ट दिखाएँ
+        });
+
+        peer.on('call', (call) => {
+            // Incoming Call
+            currentCall = call;
+            document.getElementById('incoming-screen').style.display = 'flex';
+            document.getElementById('caller-id-disp').innerText = call.peer;
+            
+            // Ringtone के लिए Kodular को सिग्नल भेजें (Optional)
+            // window.location.href = "kodular:INCOMING:" + call.peer;
+        });
+
+        peer.on('error', (err) => {
+            alert("Error: " + err.type);
+        });
+
+        // --- 3. CALLING FUNCTIONS ---
+
+        function openDialer() {
+            document.getElementById('dial-modal').style.display = 'flex';
+        }
+        function closeDialer() {
+            document.getElementById('dial-modal').style.display = 'none';
         }
 
-        // --- INITIALIZATION ---
-        
-        function initApp() {
-            myID = getMyIdFromUrl();
-            document.getElementById('my-peer-id').innerText = myID;
-            
-            // Start Camera early
-            navigator.mediaDevices.getUserMedia(VIDEO_CONSTRAINTS)
-            .then(stream => {
+        // इनपुट बॉक्स से कॉल
+        function dialFromInput() {
+            const id = document.getElementById('input-partner-id').value;
+            if(id) {
+                closeDialer();
+                startCall(id);
+            }
+        }
+
+        // डायरेक्ट कॉल (हिस्ट्री से या इनपुट से)
+        function startCall(partnerID) {
+            if(partnerID === myID) return alert("Cannot call yourself");
+
+            // UI दिखाएँ
+            document.getElementById('video-screen').style.display = 'block';
+
+            // हिस्ट्री में सेव करें
+            addToHistory(partnerID, 'outgoing');
+
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then((stream) => {
                 localStream = stream;
                 document.getElementById('local-video').srcObject = stream;
-                initPeer();
-            })
-            .catch(err => {
-                alert("Camera permission denied. Cannot start app.");
-            });
-        }
 
-        function initPeer() {
-            peer = new Peer(myID, peerConfig);
-
-            peer.on('open', (id) => {
-                console.log('Peer ID is set:', id);
-            });
-
-            peer.on('error', (err) => {
-                console.error("Peer Error:", err.type);
-                document.getElementById('status-display').innerText = "ERROR: ID unavailable or Network issue.";
-            });
-
-            // 2. INCOMING CALL HANDLING
-            peer.on('call', (call) => {
-                if(currentCall || isReceivingCall) {
-                    // Reject subsequent calls if already busy
-                    call.close();
-                    return;
-                }
-                
-                isReceivingCall = true;
+                const call = peer.call(partnerID, stream);
                 currentCall = call;
+
+                call.on('stream', (remoteStream) => {
+                    document.getElementById('remote-video').srcObject = remoteStream;
+                });
                 
-                document.getElementById('caller-name').innerText = "Incoming Call from ID: " + call.peer;
-                document.getElementById('incoming-screen').style.display = 'flex';
+                call.on('close', endCall);
+                call.on('error', () => { alert("Call failed"); endCall(); });
+            })
+            .catch(err => alert("Camera Permission Required"));
+        }
+
+        function acceptCall() {
+            document.getElementById('incoming-screen').style.display = 'none';
+            document.getElementById('video-screen').style.display = 'block';
+
+            // इनकमिंग कॉल को हिस्ट्री में सेव करें
+            addToHistory(currentCall.peer, 'incoming');
+
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then((stream) => {
+                localStream = stream;
+                document.getElementById('local-video').srcObject = stream;
+
+                currentCall.answer(stream);
                 
-                // --- KODULAR INTERACTION (Ringing) ---
-                // Tell Kodular to play the ringtone/vibration
-                // IMPORTANT: This function must exist in Kodular's WebViewer.GotText
-                window.location.href = "kodular:INCOMING_CALL:" + call.peer; 
+                currentCall.on('stream', (remoteStream) => {
+                    document.getElementById('remote-video').srcObject = remoteStream;
+                });
+                
+                currentCall.on('close', endCall);
             });
         }
-        
-        // --- CALL FUNCTIONS ---
 
-        function startCall() {
-            const partnerID = document.getElementById('partner-id').value.trim();
-            if(!partnerID || partnerID === myID) {
-                alert("Enter a valid Partner ID.");
-                return;
-            }
-
+        function rejectCall() {
+            if(currentCall) currentCall.close();
+            document.getElementById('incoming-screen').style.display = 'none';
+        }<!DOCTYPE html>
             document.getElementById('status-display').innerText = "Connecting...";
             
             const call = peer.call(partnerID, localStream);
@@ -229,6 +358,67 @@
         
         // Start the application setup
         initApp();
+    </script>
+</body>
+</html>
+
+
+        function endCall() {
+            if(currentCall) currentCall.close();
+            if(localStream) localStream.getTracks().forEach(t => t.stop());
+            
+            document.getElementById('video-screen').style.display = 'none';
+            location.reload(); // पेज रिफ्रेश कर दें ताकि सब रीसेट हो जाए
+        }
+
+        // --- 4. HISTORY / RECENT CALLS LOGIC ---
+
+        function addToHistory(id, type) {
+            // डुप्लीकेट से बचने के लिए, अगर ID पहले से है तो उसे हटाएं (ताकि वो टॉप पर आ जाए)
+            callHistory = callHistory.filter(item => item.id !== id);
+            
+            const newEntry = {
+                id: id,
+                time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                type: type // 'incoming' or 'outgoing'
+            };
+            
+            // लिस्ट के शुरू में जोड़ें
+            callHistory.unshift(newEntry);
+            localStorage.setItem('wa_call_history', JSON.stringify(callHistory));
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('recent-list');
+            if(callHistory.length === 0) return;
+
+            list.innerHTML = ''; // लिस्ट साफ़ करें
+            
+            callHistory.forEach(item => {
+                const isOutgoing = item.type === 'outgoing';
+                const icon = isOutgoing ? 'call_made' : 'call_received';
+                const iconColor = isOutgoing ? '#00a884' : '#f44336'; // Green for outgoing, Red for incoming
+
+                const div = document.createElement('div');
+                div.className = 'call-item';
+                div.onclick = () => startCall(item.id); // क्लिक करने पर कॉल लगे
+
+                div.innerHTML = `
+                    <div class="avatar"><i class="material-icons" style="color:white;">person</i></div>
+                    <div class="info">
+                        <div class="name">${item.id}</div>
+                        <div class="time">
+                            <i class="material-icons" style="font-size:14px; color:${iconColor}; margin-right:5px;">${icon}</i>
+                            ${item.time}
+                        </div>
+                    </div>
+                    <i class="material-icons call-icon">videocam</i>
+                `;
+                list.appendChild(div);
+            });
+        }
+
     </script>
 </body>
 </html>
